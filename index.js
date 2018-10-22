@@ -1,3 +1,4 @@
+const cors = require("cors");
 const fetch = require("node-fetch");
 const express = require("express");
 const PORT = process.env.PORT || 5000;
@@ -10,6 +11,9 @@ const acceptHeader = {
 };
 
 const deadlineRegex = /deadline:((\d|\d\d)\/(\d|\d\d)\/\d\d\d\d)/;
+
+let lastReqTime;
+let cardCache;
 
 async function fetcher(url, headerOverride, optOverride) {
   const res = await fetch(url, {
@@ -129,6 +133,26 @@ async function getCards() {
 //     content_url:
 //      'https://api.github.com/repos/althea-mesh/althea_rs/issues/278' },
 
+var corsOptions = {
+  origin: "*",
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+
+setInterval();
+
 express()
-  .get("/cards", async (req, res) => res.send(JSON.stringify(await getCards())))
+  .use(cors(corsOptions))
+  .get("/cards", async (req, res) => {
+    if (Date.now() - lastReqTime < 1000 * 60) {
+      cards = cardCache;
+      console.log("got cards from cache");
+    } else {
+      cards = JSON.stringify(await getCards());
+      cardCache = cards;
+      lastReqTime = Date.now();
+      console.log("got cards from github");
+    }
+
+    return res.send(cards);
+  })
   .listen(PORT, () => console.log(`Listening on ${PORT}`));
