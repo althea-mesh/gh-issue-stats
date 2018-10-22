@@ -1,4 +1,6 @@
 const fetch = require("node-fetch");
+const express = require("express");
+const PORT = process.env.PORT || 5000;
 
 const authHeader =
   "Basic " + Buffer.from(process.env.GH_TOKEN).toString("base64");
@@ -35,7 +37,7 @@ function matchOrNull(regex, string) {
   return null;
 }
 
-!(async () => {
+async function getCards() {
   const columns = await fetcher(
     "https://api.github.com/projects/1755122/columns",
     acceptHeader
@@ -91,9 +93,8 @@ function matchOrNull(regex, string) {
     return column;
   });
 
-  console.log(JSON.stringify(populatedColumns, null, 2));
-  console.log("reqs", reqs);
-})();
+  return populatedColumns;
+}
 
 // { url: 'https://api.github.com/projects/columns/cards/13206218',
 //     project_url: 'https://api.github.com/projects/1755122',
@@ -128,14 +129,6 @@ function matchOrNull(regex, string) {
 //     content_url:
 //      'https://api.github.com/repos/althea-mesh/althea_rs/issues/278' },
 
-var corsOptions = {
-  origin: "https://althea.org",
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-};
-
 express()
-  .use(cors(corsOptions))
-  .use(bodyParser.urlencoded({ extended: true }))
-  .use(expressSanitized.middleware())
-  .get("/issues", (req, res) => res.send(JSON.stringify(airtableCache.nodes)))
+  .get("/cards", async (req, res) => res.send(JSON.stringify(await getCards())))
   .listen(PORT, () => console.log(`Listening on ${PORT}`));
