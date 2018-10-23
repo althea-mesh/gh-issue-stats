@@ -1,7 +1,41 @@
 const cors = require("cors");
 const fetch = require("node-fetch");
 const express = require("express");
+const base = require("airtable").base(process.env.BASE);
 const PORT = process.env.PORT || 5000;
+const equal = require("fast-deep-equal");
+// get gh cards that are not in airtable
+// get gh cards that have changed from airtable
+
+// for card in gh cards
+//   find gh card in airtable
+//   if exists
+//      if changes
+//         add to update queue
+//   else
+//     add to create queue
+
+const postToAirtable = (req, res) => {
+  base("Cards").create(
+    {
+      Name: req.body.Name || "",
+      Email: req.body.Email || "",
+      Address: req.body.Address || "",
+      Message: req.body.Message || "",
+      Type: type,
+      Newsletter: req.body.Newsletter === "",
+      Notify: req.body.Notify === "",
+      Honnl3P0t: req.body.Honnl3P0t || "",
+      IP: req.ip
+    },
+    function(err) {
+      if (err) {
+        console.error(err);
+        return;
+      }
+    }
+  );
+};
 
 const authHeader =
   "Basic " + Buffer.from(process.env.GH_TOKEN).toString("base64");
@@ -48,7 +82,7 @@ async function getCards() {
   );
 
   const cards = await Promise.all(
-    columns.map(async ({ cards_url }) => {
+    columns.map(async ({ cards_url, name }) => {
       const cards = await fetcher(cards_url, acceptHeader);
 
       return Promise.all(
@@ -68,77 +102,96 @@ async function getCards() {
             deadline = matchOrNull(deadlineRegex, issue.body);
           }
 
-          return {
+          const trimmedCard = {
             deadline,
             archived: card.archived,
             note: card.note,
             id: card.id,
-            created_at: card.created_at,
-            column: /\/(\d+)$/.exec(card.column_url)[1],
-            html_url: card.url,
-            issue: issue && {
-              number: issue.number,
-              title: issue.title,
-              html_url: issue.html_url,
-              state: issue.state,
-              assignees:
-                issue.assignees && issue.assignees.map(({ login }) => login),
-              created_at: issue.created_at,
-              body: issue.body
-            }
+            card_created_at: card.created_at,
+            issue_created_at: issue && issue.created_at,
+            column: name,
+            card_url: card.url,
+            issue_number: issue && issue.number,
+            title: issue && issue.title,
+            issue_url: issue && issue.html_url,
+            state: issue && issue.state,
+            assignees:
+              issue &&
+              issue.assignees &&
+              issue.assignees.map(({ login }) => login),
+            body: issue && issue.body
           };
+
+          return trimmedCard;
         })
       );
     })
   );
 
-  const populatedColumns = columns.map((column, i) => {
-    column.cards = cards[i];
-    return column;
-  });
+  const populatedCards = cards.reduce((acc, cardArray) => {
+    return cardArray.reduce((acc, card) => {
+      acc.push(card);
+      return acc;
+    }, acc);
+  }, []);
 
-  return populatedColumns;
+  return populatedCards;
 }
 
-// { url: 'https://api.github.com/projects/columns/cards/13206218',
-//     project_url: 'https://api.github.com/projects/1755122',
-//     id: 13206218,
-//     node_id: 'MDExOlByb2plY3RDYXJkMTMyMDYyMTg=',
-//     note: null,
-//     archived: false,
-//     creator:
-//      { login: 'jtremback',
-//        id: 1335122,
-//        node_id: 'MDQ6VXNlcjEzMzUxMjI=',
-//        avatar_url: 'https://avatars2.githubusercontent.com/u/1335122?v=4',
-//        gravatar_id: '',
-//        url: 'https://api.github.com/users/jtremback',
-//        html_url: 'https://github.com/jtremback',
-//        followers_url: 'https://api.github.com/users/jtremback/followers',
-//        following_url:
-//         'https://api.github.com/users/jtremback/following{/other_user}',
-//        gists_url: 'https://api.github.com/users/jtremback/gists{/gist_id}',
-//        starred_url:
-//         'https://api.github.com/users/jtremback/starred{/owner}{/repo}',
-//        subscriptions_url: 'https://api.github.com/users/jtremback/subscriptions',
-//        organizations_url: 'https://api.github.com/users/jtremback/orgs',
-//        repos_url: 'https://api.github.com/users/jtremback/repos',
-//        events_url: 'https://api.github.com/users/jtremback/events{/privacy}',
-//        received_events_url: 'https://api.github.com/users/jtremback/received_events',
-//        type: 'User',
-//        site_admin: false },
-//     created_at: '2018-09-21T17:38:15Z',
-//     updated_at: '2018-09-21T17:39:11Z',
-//     column_url: 'https://api.github.com/projects/columns/3361104',
-//     content_url:
-//      'https://api.github.com/repos/althea-mesh/althea_rs/issues/278' },
+function createOperationQueues(a, b, idField) {
+  const bmap = b.reduce((acc, item) => {
+    acc[item[idField]] = item;
+    return acc;
+  }, {});
+
+  return a.reduce(
+    (acc, aItem) => {
+      const bItem = bmap[aItem[idField]];
+
+      if (bItem) {
+        if (!equal(aItem, bItem)) {
+          acc.update.push(aItem);
+        }
+      } else {
+        acc.create.push(aItem);
+      }
+    },
+    { create: [], update: [] }
+  );
+}
 
 var corsOptions = {
   origin: "*",
   optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 };
 
-setInterval();
+async function updateAirtable() {
+  cards = await getCards();
+  lastReqTime = Date.now();
+  console.log("got cards from github");
+
+  base("Cards").create(
+    {
+      Name: req.body.Name || "",
+      Email: req.body.Email || "",
+      Address: req.body.Address || "",
+      Message: req.body.Message || "",
+      Type: type,
+      Newsletter: req.body.Newsletter === "",
+      Notify: req.body.Notify === "",
+      Honnl3P0t: req.body.Honnl3P0t || "",
+      IP: req.ip
+    },
+    function(err) {
+      if (err) {
+        console.error(err);
+        return;
+      }
+    }
+  );
+}
+
+setInterval(updateCardCache, 1000 * 60);
 
 express()
   .use(cors(corsOptions))
