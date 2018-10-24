@@ -9,9 +9,20 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "airtable": "^0.5.7",
     "cors": "^2.8.4",
     "express": "^4.16.4",
+    "luxon": "^1.4.4",
     "moment": "^2.22.2",
     "node-fetch": "^2.2.0"
+  },
+  "devDependencies": {
+    "babel-eslint": "^9.0.0",
+    "eslint": "^5.7.0",
+    "eslint-config-react-app": "^3.0.4",
+    "eslint-plugin-flowtype": "^2.50.3",
+    "eslint-plugin-import": "^2.14.0",
+    "eslint-plugin-jsx-a11y": "^6.1.2",
+    "eslint-plugin-react": "^7.11.1"
   }
 }

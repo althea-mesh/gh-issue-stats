@@ -1,9 +1,11 @@
-const cors = require("cors");
+const { DateTime } = require("luxon");
 const fetch = require("node-fetch");
-const express = require("express");
-const base = require("airtable").base(process.env.BASE);
-const PORT = process.env.PORT || 5000;
+const Airtable = require("airtable");
+const base = new Airtable({ apiKey: process.env.AIRTABLE_KEY }).base(
+  process.env.BASE
+);
 const equal = require("fast-deep-equal");
+
 // get gh cards that are not in airtable
 // get gh cards that have changed from airtable
 
@@ -15,28 +17,6 @@ const equal = require("fast-deep-equal");
 //   else
 //     add to create queue
 
-const postToAirtable = (req, res) => {
-  base("Cards").create(
-    {
-      Name: req.body.Name || "",
-      Email: req.body.Email || "",
-      Address: req.body.Address || "",
-      Message: req.body.Message || "",
-      Type: type,
-      Newsletter: req.body.Newsletter === "",
-      Notify: req.body.Notify === "",
-      Honnl3P0t: req.body.Honnl3P0t || "",
-      IP: req.ip
-    },
-    function(err) {
-      if (err) {
-        console.error(err);
-        return;
-      }
-    }
-  );
-};
-
 const authHeader =
   "Basic " + Buffer.from(process.env.GH_TOKEN).toString("base64");
 
@@ -46,9 +26,7 @@ const acceptHeader = {
 
 const deadlineRegex = /deadline:((\d|\d\d)\/(\d|\d\d)\/\d\d\d\d)/;
 
-let lastReqTime;
-let cardCache;
-
+const airtableTimeout = 400;
 async function fetcher(url, headerOverride, optOverride) {
   const res = await fetch(url, {
     headers: {
@@ -75,9 +53,28 @@ function matchOrNull(regex, string) {
   return null;
 }
 
-async function getCards() {
+async function getAirtableRecords() {
+  const airtableRecords = [];
+
+  await base(process.env.TABLE)
+    .select()
+    .eachPage(function page(records, fetchNextPage) {
+      records.forEach(record => {
+        const rec = record._rawJson.fields;
+        rec.airtable_id = record._rawJson.id;
+        airtableRecords.push(rec);
+      });
+
+      fetchNextPage();
+    });
+
+  console.log("got Airtable cards", airtableRecords.length);
+  return airtableRecords;
+}
+
+async function getGithubCards() {
   const columns = await fetcher(
-    "https://api.github.com/projects/1755122/columns",
+    "https://api.github.com/projects/" + process.env.GH_PROJECT + "/columns",
     acceptHeader
   );
 
@@ -103,14 +100,17 @@ async function getCards() {
           }
 
           const trimmedCard = {
-            deadline,
+            id: card.id,
+            deadline:
+              deadline && DateTime.fromFormat(deadline, "M/d/yyyy").toISODate(),
             archived: card.archived,
             note: card.note,
-            id: card.id,
-            card_created_at: card.created_at,
-            issue_created_at: issue && issue.created_at,
+            card_created_at: DateTime.fromISO(card.created_at).toISODate(),
+            issue_created_at:
+              issue && DateTime.fromISO(issue.created_at).toISODate(),
             column: name,
             card_url: card.url,
+            repo_name: issue && matchOrNull(/([^/]*?)$/, issue.repository_url),
             issue_number: issue && issue.number,
             title: issue && issue.title,
             issue_url: issue && issue.html_url,
@@ -118,7 +118,10 @@ async function getCards() {
             assignees:
               issue &&
               issue.assignees &&
-              issue.assignees.map(({ login }) => login),
+              issue.assignees.reduce((acc, { login }) => {
+                acc = acc + login;
+                return acc;
+              }, ""),
             body: issue && issue.body
           };
 
@@ -135,6 +138,7 @@ async function getCards() {
     }, acc);
   }, []);
 
+  console.log("got GH cards", populatedCards.length);
   return populatedCards;
 }
 
@@ -147,65 +151,80 @@ function createOperationQueues(a, b, idField) {
   return a.reduce(
     (acc, aItem) => {
       const bItem = bmap[aItem[idField]];
+      // console.log("BITT", aItem, idField, aItem[idField], bItem);
 
       if (bItem) {
         if (!equal(aItem, bItem)) {
+          aItem.airtable_id = bItem.airtable_id;
           acc.update.push(aItem);
         }
       } else {
         acc.create.push(aItem);
       }
+      return acc;
     },
     { create: [], update: [] }
   );
 }
 
-var corsOptions = {
-  origin: "*",
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
-};
+// 10
+// req
+// 12
+// reqDuration = 12 - 10 = 2
+// wait timeout - reqDuration
 
-async function updateAirtable() {
-  cards = await getCards();
-  lastReqTime = Date.now();
-  console.log("got cards from github");
-
-  base("Cards").create(
-    {
-      Name: req.body.Name || "",
-      Email: req.body.Email || "",
-      Address: req.body.Address || "",
-      Message: req.body.Message || "",
-      Type: type,
-      Newsletter: req.body.Newsletter === "",
-      Notify: req.body.Notify === "",
-      Honnl3P0t: req.body.Honnl3P0t || "",
-      IP: req.ip
-    },
-    function(err) {
-      if (err) {
-        console.error(err);
-        return;
-      }
-    }
-  );
+function sleep(duration) {
+  return new Promise(resolve => {
+    setTimeout(resolve, duration);
+  });
 }
 
-setInterval(updateCardCache, 1000 * 60);
+async function airtableCreate(card) {
+  const start = Date.now();
+  try {
+    await base(process.env.TABLE).create(card);
+  } catch (e) {
+    console.error(e);
+  }
+  console.log("card created", card.note || card.title);
+  await sleep(airtableTimeout - (Date.now() - start));
+}
 
-express()
-  .use(cors(corsOptions))
-  .get("/cards", async (req, res) => {
-    if (Date.now() - lastReqTime < 1000 * 60) {
-      cards = cardCache;
-      console.log("got cards from cache");
-    } else {
-      cards = JSON.stringify(await getCards());
-      cardCache = cards;
-      lastReqTime = Date.now();
-      console.log("got cards from github");
-    }
+async function airtableUpdate(card) {
+  const start = Date.now();
 
-    return res.send(cards);
-  })
-  .listen(PORT, () => console.log(`Listening on ${PORT}`));
+  try {
+    await base(process.env.TABLE).update(card.airtable_id, card);
+  } catch (e) {
+    console.error(e);
+  }
+  console.log("card updated", card.note || card.title);
+  await sleep(airtableTimeout - (Date.now() - start));
+}
+
+async function doIt() {
+  const [ghCards, airtableRecords] = await Promise.all([
+    getGithubCards(),
+    getAirtableRecords()
+  ]);
+
+  const opQs = createOperationQueues(ghCards, airtableRecords, "id");
+
+  console.log(
+    "created operation queues, create: " +
+      opQs.create.length +
+      ", update: " +
+      opQs.update.length
+  );
+
+  for (const card of opQs.create) {
+    await airtableCreate(card);
+  }
+
+  for (const card of opQs.update) {
+    await airtableUpdate(card);
+  }
+}
+
+doIt();
+setInterval(doIt, 60 * 1000);
