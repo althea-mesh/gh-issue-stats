@@ -154,11 +154,6 @@ function createOperationQueues(a, b, idField) {
         aItem.airtable_id = bItem.airtable_id;
         filterNullAndEmpty(aItem);
         if (!equal(aItem, bItem)) {
-          console.log(
-            "AKFJFNLADFKADFMKAMDKLFLMKADFLMKADFLMADLMFKADSLKMFLMNSNSNJVOS",
-            aItem,
-            bItem
-          );
           acc.update.push(aItem);
         }
       } else {
