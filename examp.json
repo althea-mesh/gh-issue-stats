@@ -1264,3 +1264,37 @@
     ]
   })
 ]
+
+
+
+
+
+{ title:
+    'Implement designs for changing the subnet DAO menu to hide organizer features',
+   deadline: null,
+   body:
+    '<img width="723" alt="image" src="https://user-images.githubusercontent.com/1335122/46112956-5f71f780-c1a1-11e8-94a2-c2d1f6435326.png">\r\n\r\n<img width="720" alt="image" src="https://user-images.githubusercontent.com/1335122/46112971-6862c900-c1a1-11e8-9d78-968097346b56.png">\r\n\r\n<img width="678" alt="image" src="https://user-images.githubusercontent.com/1335122/46113195-3a31b900-c1a2-11e8-807d-ebbceb9ef666.png">\r\n',
+   state: 'closed',
+   column: 'Done',
+   assignees: ' asoltys',
+   issue_created_at: '2018-09-26',
+   repo_name: 'aragon-node-list',
+   issue_number: 11,
+   issue_url: 'https://github.com/althea-mesh/aragon-node-list/issues/11',
+   id: 13341464 } 
+   
+  { title:
+    'Implement designs for changing the subnet DAO menu to hide organizer features',
+   body:
+    '<img width="723" alt="image" src="https://user-images.githubusercontent.com/1335122/46112956-5f71f780-c1a1-11e8-94a2-c2d1f6435326.png">\r\n\r\n<img width="720" alt="image" src="https://user-images.githubusercontent.com/1335122/46112971-6862c900-c1a1-11e8-9d78-968097346b56.png">\r\n\r\n<img width="678" alt="image" src="https://user-images.githubusercontent.com/1335122/46113195-3a31b900-c1a2-11e8-807d-ebbceb9ef666.png">\r\n',
+   state: 'closed',
+   column: 'Done',
+   assignees: ' asoltys',
+   issue_created_at: '2018-09-26',
+   repo_name: 'aragon-node-list',
+   issue_number: 11,
+   issue_created_at: '2018-09-23',
+   repo_name: 'clarity',
+   issue_number: 26,
+   issue_url: 'https://github.com/althea-mesh/clarity/pull/26',
+   id: 13228640 }

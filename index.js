@@ -83,50 +83,38 @@ async function getGithubCards() {
       const cards = await fetcher(cards_url, acceptHeader);
 
       return Promise.all(
-        cards.filter(card => !card.archived).map(async card => {
-          const issue =
-            card.content_url && (await fetcher(card.content_url, acceptHeader));
+        cards
+          .filter(card => !card.archived && card.content_url)
+          .map(async card => {
+            const issue = await fetcher(card.content_url, acceptHeader);
 
-          let deadline;
+            const deadline =
+              matchOrNull(deadlineRegex, issue.title) ||
+              matchOrNull(deadlineRegex, issue.body);
 
-          if (card.note) {
-            deadline = matchOrNull(deadlineRegex, card.note);
-          }
-          if (!deadline && issue && issue.title) {
-            deadline = matchOrNull(deadlineRegex, issue.title);
-          }
-          if (!deadline && issue && issue.body) {
-            deadline = matchOrNull(deadlineRegex, issue.body);
-          }
+            const trimmedCard = {
+              title: issue.title,
+              deadline:
+                deadline &&
+                DateTime.fromFormat(deadline, "M/d/yyyy").toISODate(),
+              body: issue.body,
+              state: issue.state,
+              column: name,
+              assignees:
+                issue.assignees &&
+                issue.assignees.reduce((acc, { login }) => {
+                  acc = acc + " " + login;
+                  return acc;
+                }, ""),
+              issue_created_at: DateTime.fromISO(issue.created_at).toISODate(),
+              repo_name: matchOrNull(/([^/]*?)$/, issue.repository_url),
+              issue_number: issue.number,
+              issue_url: issue.html_url,
+              id: card.id
+            };
 
-          const trimmedCard = {
-            id: card.id,
-            deadline:
-              deadline && DateTime.fromFormat(deadline, "M/d/yyyy").toISODate(),
-            archived: card.archived,
-            note: card.note,
-            card_created_at: DateTime.fromISO(card.created_at).toISODate(),
-            issue_created_at:
-              issue && DateTime.fromISO(issue.created_at).toISODate(),
-            column: name,
-            card_url: card.url,
-            repo_name: issue && matchOrNull(/([^/]*?)$/, issue.repository_url),
-            issue_number: issue && issue.number,
-            title: issue && issue.title,
-            issue_url: issue && issue.html_url,
-            state: issue && issue.state,
-            assignees:
-              issue &&
-              issue.assignees &&
-              issue.assignees.reduce((acc, { login }) => {
-                acc = acc + login;
-                return acc;
-              }, ""),
-            body: issue && issue.body
-          };
-
-          return trimmedCard;
-        })
+            return trimmedCard;
+          })
       );
     })
   );
@@ -142,6 +130,13 @@ async function getGithubCards() {
   return populatedCards;
 }
 
+function filterNullAndEmpty(obj) {
+  Object.keys(obj).forEach(key => {
+    if (obj[key] === "" || obj[key] === null) {
+      delete obj[key];
+    }
+  });
+}
 function createOperationQueues(a, b, idField) {
   const bmap = b.reduce((acc, item) => {
     acc[item[idField]] = item;
@@ -154,8 +149,16 @@ function createOperationQueues(a, b, idField) {
       // console.log("BITT", aItem, idField, aItem[idField], bItem);
 
       if (bItem) {
+        // this stuff makes it so that equality checks work right since airtable won't
+        // return fields that are null or empty strings
+        aItem.airtable_id = bItem.airtable_id;
+        filterNullAndEmpty(aItem);
         if (!equal(aItem, bItem)) {
-          aItem.airtable_id = bItem.airtable_id;
+          console.log(
+            "AKFJFNLADFKADFMKAMDKLFLMKADFLMKADFLMADLMFKADSLKMFLMNSNSNJVOS",
+            aItem,
+            bItem
+          );
           acc.update.push(aItem);
         }
       } else {
